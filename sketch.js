@@ -9,9 +9,9 @@ let scoreFont; // Add font variable
 const PRISM_LENGTH = 1000;
 const PRISM_WIDTH = 800;
 const PRISM_HEIGHT = 500;
-const PADDLE_SIZE = 60;
+const PADDLE_SIZE = 80;
 const BALL_SIZE = 20; // Size of the ball (20 units); used as the radius when drawing a sphere.
-const BALL_SPEED = 5; // Base speed for the ball's movement (5 units per frame).
+const BALL_SPEED = 7; // Base speed for the ball's movement (5 units per frame).
 
 function preload() {
   // Load font
