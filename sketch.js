@@ -4,11 +4,14 @@ let shared;
 let guests;
 let me;
 let scoreFont; // Add font variable
+let canvas; // Canvas element
 
 // Game constants
+const CANVAS_WIDTH = 800;
+const CANVAS_HEIGHT = 500;
 const PRISM_LENGTH = 1000;
-const PRISM_WIDTH = 800;
-const PRISM_HEIGHT = 500;
+const PRISM_WIDTH = CANVAS_WIDTH;
+const PRISM_HEIGHT = CANVAS_HEIGHT;
 const PADDLE_SIZE = 80;
 const BALL_SIZE = 20; // Size of the ball (20 units); used as the radius when drawing a sphere.
 const BALL_SPEED = 7; // Base speed for the ball's movement (5 units per frame).
@@ -39,6 +42,10 @@ function preload() {
     // Add contact times to shared state
     player1ContactTime: 0,
     player2ContactTime: 0,
+    gameState: "playing", // "playing", "paused", "ended"
+    pauseTimer: 0,
+    player1PlaneFlash: 0,
+    player2PlaneFlash: 0,
   });
 
   // Load player data
@@ -54,17 +61,24 @@ function preload() {
 
 function setup() {
   // Calculate canvas size based on perspective view of prism end
-  let canvas = createCanvas(windowWidth, windowHeight, WEBGL);
+  canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT, WEBGL);
+  centerCanvas();
   canvas.style("border", "1px solid white");
   setAttributes("alpha", true);
 
   // Set perspective settings for better depth perception
   perspective(PI / 3, width / height, 1, PRISM_LENGTH * 2);
 
-  // Assign player positions
-  if (guests.length === 1) {
+  // Assign player positions - first to join is Player 1
+  if (guests.length === 0) {
     me.isPlayer1 = true;
     me.role = "player1";
+  } else if (guests.length === 1 && !guests[0].isPlayer1) {
+    me.isPlayer1 = true;
+    me.role = "player1";
+  } else {
+    me.isPlayer1 = false;
+    me.role = "player2";
   }
 }
 
@@ -98,7 +112,7 @@ function draw() {
 
   drawGameEnvironment();
 
-  if (guests.length === 2) {
+  if (guests.length === 2 && shared.gameState !== "ended") {
     updateBall();
     drawBall();
   }
@@ -115,6 +129,25 @@ function drawGameEnvironment() {
   translate(0, 0, 0);
   box(PRISM_WIDTH, PRISM_HEIGHT, PRISM_LENGTH);
   pop();
+
+  // Draw goal plane flashes
+  if (shared.player1PlaneFlash > 0) {
+    push();
+    fill(255, 0, 0, 25); // Red with low opacity
+    noStroke();
+    translate(0, 0, -PRISM_LENGTH / 2);
+    plane(PRISM_WIDTH, PRISM_HEIGHT);
+    pop();
+  }
+
+  if (shared.player2PlaneFlash > 0) {
+    push();
+    fill(255, 0, 0, 25); // Red with low opacity
+    noStroke();
+    translate(0, 0, PRISM_LENGTH / 2);
+    plane(PRISM_WIDTH, PRISM_HEIGHT);
+    pop();
+  }
 }
 
 function drawPaddles() {
@@ -174,8 +207,8 @@ function drawPaddles() {
 
 function drawBall() {
   push();
-  fill(255);
-  stroke(0, 0, 255);
+  noStroke();
+  fill(255); // Keep ball white
   translate(shared.ball.x, shared.ball.y, shared.ball.z);
   sphere(BALL_SIZE);
   pop();
@@ -184,9 +217,21 @@ function drawBall() {
 function updateBall() {
   if (me.isPlayer1) {
     // Only player 1 updates ball position to avoid conflicts
-    // Update contact times
+    // Update contact times and plane flashes
     if (shared.player1ContactTime > 0) shared.player1ContactTime--;
     if (shared.player2ContactTime > 0) shared.player2ContactTime--;
+    if (shared.player1PlaneFlash > 0) shared.player1PlaneFlash--;
+    if (shared.player2PlaneFlash > 0) shared.player2PlaneFlash--;
+
+    // Handle pause timer
+    if (shared.gameState === "paused") {
+      if (shared.pauseTimer > 0) {
+        shared.pauseTimer--;
+      } else {
+        shared.gameState = "playing";
+      }
+      return;
+    }
 
     shared.ball.x += shared.ball.vx;
     shared.ball.y += shared.ball.vy;
@@ -227,6 +272,15 @@ function updateBall() {
           "-",
           shared.score.player2
         );
+        // Flash player 1's plane red (they got scored on)
+        shared.player1PlaneFlash = 30;
+
+        if (shared.score.player2 >= 10) {
+          shared.gameState = "ended";
+        } else {
+          shared.gameState = "paused";
+          shared.pauseTimer = 30; // Half second at 60fps
+        }
         resetBall(false);
       }
     } else if (shared.ball.z > PRISM_LENGTH / 2 - BALL_SIZE) {
@@ -249,6 +303,15 @@ function updateBall() {
           "-",
           shared.score.player2
         );
+        // Flash player 2's plane red (they got scored on)
+        shared.player2PlaneFlash = 30;
+
+        if (shared.score.player1 >= 10) {
+          shared.gameState = "ended";
+        } else {
+          shared.gameState = "paused";
+          shared.pauseTimer = 30; // Half second at 60fps
+        }
         resetBall(true);
       }
     }
@@ -275,12 +338,25 @@ function drawScore() {
   // Update the score display div
   const scoreDisplay = document.getElementById("score-display");
   if (scoreDisplay) {
-    scoreDisplay.textContent = `${shared.score.player1} - ${shared.score.player2}`;
+    // Check for winner
+    if (shared.gameState === "ended") {
+      if (shared.score.player1 >= 10) {
+        scoreDisplay.textContent = me.isPlayer1 ? "YOU WIN!" : "YOU LOSE!";
+      } else if (shared.score.player2 >= 10) {
+        scoreDisplay.textContent = me.isPlayer1 ? "YOU LOSE!" : "YOU WIN!";
+      }
+    } else {
+      scoreDisplay.textContent = `${shared.score.player1} - ${shared.score.player2}`;
+    }
   }
 }
 
 function windowResized() {
-  resizeCanvas(windowWidth, windowHeight);
-  // Update perspective on resize
-  perspective(PI / 3, width / height, 1, PRISM_LENGTH * 2);
+  centerCanvas();
+}
+
+function centerCanvas() {
+  const x = (windowWidth - CANVAS_WIDTH) / 2;
+  const y = (windowHeight - CANVAS_HEIGHT) / 2;
+  canvas.position(x, y);
 }
